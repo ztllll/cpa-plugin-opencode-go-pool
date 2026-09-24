@@ -47,6 +47,7 @@ type pluginConfig struct {
 	RefreshInterval  string            `yaml:"dashboard-refresh-interval"`
 	StaleAfter       string            `yaml:"dashboard-stale-after"`
 	UsageDetailRange string            `yaml:"usage-detail-range"`
+	ModelLimitOverrides map[string]float64 `yaml:"model-limit-overrides"`
 	Accounts         []accountOverride `yaml:"accounts"`
 }
 
@@ -59,6 +60,7 @@ type settings struct {
 	RefreshInterval  time.Duration
 	StaleAfter       time.Duration
 	UsageDetailRange string
+	ModelLimitOverrides map[string]float64
 	AuthDir          string
 	Overrides        []accountOverride
 }
@@ -89,6 +91,7 @@ func decodeSettings(configYAML []byte) settings {
 		RefreshInterval:  parseDurationOr(cfg.RefreshInterval, defaultRefreshEvery),
 		StaleAfter:       parseDurationOr(cfg.StaleAfter, defaultStaleAfter),
 		UsageDetailRange: usageDetailRangeOrDefault(cfg.UsageDetailRange),
+		ModelLimitOverrides: cfg.ModelLimitOverrides,
 		Overrides:        cfg.Accounts,
 	}
 	if out.CPAConfigPath == "" {

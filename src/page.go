@@ -52,6 +52,19 @@ function headers() {
 }
 function fmtTime(iso) { return iso ? new Date(iso).toLocaleString() : ''; }
 function fmtTok(n) { return n >= 1e9 ? (n/1e9).toFixed(2)+'B' : n >= 1e6 ? (n/1e6).toFixed(2)+'M' : n >= 1e3 ? (n/1e3).toFixed(1)+'K' : String(n||0); }
+function capCell(r) {
+  if (!r.limit_known) return '<span class="muted">unknown</span>';
+  if (r.unlimited) return '<span class="ok">unlimited</span>';
+  return '$' + r.monthly_limit_usd.toFixed(0);
+}
+function remCell(r) {
+  if (!r.limit_known) return '—';
+  if (r.unlimited) return '∞';
+  const left = r.remaining_usd || 0, cap = r.monthly_limit_usd || 0;
+  const pct = cap ? Math.round((left/cap)*100) : 0;
+  const cls = cap && (r.month_to_date_usd||0)/cap >= 0.8 ? 'bad' : (pct <= 20 ? 'warn' : 'ok');
+  return '<span class="' + cls + '">$' + left.toFixed(2) + ' (' + pct + '%)</span>';
+}
 function pct(value) {
   if (value === undefined || value === null || value < 0) return '<span class="muted">n/a</span>';
   const cls = value >= 97 ? 'bad' : value >= 80 ? 'warn' : '';
@@ -115,12 +128,15 @@ async function load() {
         + (acct.model_usage_summary ? ' · ' + acct.model_usage_summary.total_requests + ' requests · $' + (acct.model_usage_summary.cost_usd || 0).toFixed(4) : '')
         + (acct.model_usage_error ? ' <span class="warn">' + acct.model_usage_error + '</span>' : '')
         + (acct.model_usage_refreshed_at ? ' <span class="muted">' + fmtTime(acct.model_usage_refreshed_at) + '</span>' : '')
-        + '</summary><table><tr><th>Model</th><th>Provider</th><th>Requests</th><th>Input tok</th><th>Output tok</th><th>Cache read</th><th>Cache write</th><th>Cost</th></tr>'
+        + '</summary><table><tr><th>Model</th><th>Provider</th><th>Requests</th><th>Input tok</th><th>Output tok</th><th>Cache read</th><th>Cache write</th><th>Cost</th><th>Limit</th><th>Month-to-date</th><th>Remaining</th></tr>'
         + acct.model_usage.map(r => '<tr><td><b>' + r.model + '</b></td><td>' + (r.provider || '') + '</td>'
           + '<td>' + (r.total_requests || 0) + '</td>'
           + '<td>' + fmtTok(r.input_tokens) + '</td><td>' + fmtTok(r.output_tokens) + '</td>'
           + '<td>' + fmtTok(r.cache_read_tokens) + '</td><td>' + fmtTok(r.cache_write_tokens) + '</td>'
-          + '<td>' + (r.cost_usd ? '$' + r.cost_usd.toFixed(4) : '—') + '</td></tr>').join('')
+          + '<td>' + (r.cost_usd ? '$' + r.cost_usd.toFixed(4) : '—') + '</td>'
+          + '<td>' + capCell(r) + '</td>'
+          + '<td>' + (r.limit_known && !r.unlimited ? '$' + (r.month_to_date_usd||0).toFixed(4) : '—') + '</td>'
+          + '<td>' + remCell(r) + '</td></tr>').join('')
         + '</table></details>');
     }
     if (usage.length) html += '<h3>Model usage detail</h3>' + usage.join('');

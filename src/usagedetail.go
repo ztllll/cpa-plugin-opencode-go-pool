@@ -38,6 +38,14 @@ type ModelUsageRow struct {
 	TotalCacheRead    int64   `json:"cache_read_tokens"`
 	TotalCacheWrite   int64   `json:"cache_write_tokens"`
 	TotalCostUSD      float64 `json:"cost_usd"`
+	// Official OpenCode Go plan cap (monthly dollars). MonthToDate is the
+	// spend since the month start; Remaining = cap - month-to-date. The 5h
+	// window is 20% and the weekly window 50% of the monthly cap.
+	LimitKnown bool    `json:"limit_known"`
+	Unlimited  bool    `json:"unlimited,omitempty"`
+	MonthlyLimitUSD float64 `json:"monthly_limit_usd,omitempty"`
+	MonthToDateUSD  float64 `json:"month_to_date_usd,omitempty"`
+	RemainingUSD    float64 `json:"remaining_usd,omitempty"`
 }
 
 // ModelUsageSummary aggregates the whole account for the selected range.
@@ -238,8 +246,22 @@ func refreshAccountModels(p *pool, acct *account, rng string) bool {
 		return false
 	}
 	out := make([]ModelUsageRow, 0, len(rows))
+	// Month-to-date spend per model, used to compute remaining official quota.
+	mtd := map[string]flexInt{}
+	if monthStart := time.Now().UTC().Format("2006-01-02T00:00:00Z"); true {
+		if bodyMTD, errMTD := consoleGet(cookie, orgID, "/usage/models?range=all&since="+monthStart+"&pageSize=100"); errMTD == nil {
+			var mtdResp usageDetailAPIResp
+			if json.Unmarshal(bodyMTD, &mtdResp) == nil {
+				for _, r := range mtdResp.rowList() {
+					mtd[r.Model] += r.TotalCostMicroCents
+				}
+			}
+		}
+	}
 	for _, r := range rows {
-		out = append(out, ModelUsageRow{
+		cap := capFor(r.Model, p.cfg.ModelLimitOverrides)
+		monthToDate := microCentsToUSD(mtd[r.Model])
+		row := ModelUsageRow{
 			Model:             r.Model,
 			Provider:          r.Provider,
 			TotalRequests:     int64(r.TotalRequests),
@@ -248,7 +270,19 @@ func refreshAccountModels(p *pool, acct *account, rng string) bool {
 			TotalCacheRead:    int64(r.TotalCacheReadTokens),
 			TotalCacheWrite:   int64(r.TotalCacheWrite5m + r.TotalCacheWrite1h),
 			TotalCostUSD:      microCentsToUSD(r.TotalCostMicroCents),
-		})
+			LimitKnown:        cap.Known,
+			Unlimited:         cap.Unlimited,
+			MonthToDateUSD:    monthToDate,
+		}
+		if cap.Known && !cap.Unlimited {
+			row.MonthlyLimitUSD = cap.LimitUSD
+			remaining := cap.LimitUSD - monthToDate
+			if remaining < 0 {
+				remaining = 0
+			}
+			row.RemainingUSD = remaining
+		}
+		out = append(out, row)
 	}
 	var summary ModelUsageSummary
 	if bodySummary, errSummary := consoleGet(cookie, orgID, "/usage/summary?range="+rng); errSummary == nil {
