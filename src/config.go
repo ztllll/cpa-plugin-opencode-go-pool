@@ -46,6 +46,7 @@ type pluginConfig struct {
 	FallbackCooldown string            `yaml:"fallback-cooldown"`
 	RefreshInterval  string            `yaml:"dashboard-refresh-interval"`
 	StaleAfter       string            `yaml:"dashboard-stale-after"`
+	UsageDetailRange string            `yaml:"usage-detail-range"`
 	Accounts         []accountOverride `yaml:"accounts"`
 }
 
@@ -57,6 +58,7 @@ type settings struct {
 	FallbackCooldown time.Duration
 	RefreshInterval  time.Duration
 	StaleAfter       time.Duration
+	UsageDetailRange string
 	AuthDir          string
 	Overrides        []accountOverride
 }
@@ -86,6 +88,7 @@ func decodeSettings(configYAML []byte) settings {
 		FallbackCooldown: parseDurationOr(cfg.FallbackCooldown, defaultFallbackCool),
 		RefreshInterval:  parseDurationOr(cfg.RefreshInterval, defaultRefreshEvery),
 		StaleAfter:       parseDurationOr(cfg.StaleAfter, defaultStaleAfter),
+		UsageDetailRange: usageDetailRangeOrDefault(cfg.UsageDetailRange),
 		Overrides:        cfg.Accounts,
 	}
 	if out.CPAConfigPath == "" {

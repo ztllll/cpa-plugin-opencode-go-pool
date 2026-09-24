@@ -51,6 +51,7 @@ function headers() {
   return h;
 }
 function fmtTime(iso) { return iso ? new Date(iso).toLocaleString() : ''; }
+function fmtTok(n) { return n >= 1e9 ? (n/1e9).toFixed(2)+'B' : n >= 1e6 ? (n/1e6).toFixed(2)+'M' : n >= 1e3 ? (n/1e3).toFixed(1)+'K' : String(n||0); }
 function pct(value) {
   if (value === undefined || value === null || value < 0) return '<span class="muted">n/a</span>';
   const cls = value >= 97 ? 'bad' : value >= 80 ? 'warn' : '';
@@ -106,6 +107,23 @@ async function load() {
         + '</div></td></tr>';
     }
     html += '</table>';
+    const usage = [];
+    for (const acct of data.accounts) {
+      if (!acct.model_usage || !acct.model_usage.length) continue;
+      usage.push('<details open><summary><b>' + acct.name + '</b> model usage'
+        + (acct.model_usage_range ? ' <span class="muted">(' + acct.model_usage_range + ')</span>' : '')
+        + (acct.model_usage_summary ? ' · ' + acct.model_usage_summary.total_requests + ' requests · $' + (acct.model_usage_summary.cost_usd || 0).toFixed(4) : '')
+        + (acct.model_usage_error ? ' <span class="warn">' + acct.model_usage_error + '</span>' : '')
+        + (acct.model_usage_refreshed_at ? ' <span class="muted">' + fmtTime(acct.model_usage_refreshed_at) + '</span>' : '')
+        + '</summary><table><tr><th>Model</th><th>Provider</th><th>Requests</th><th>Input tok</th><th>Output tok</th><th>Cache read</th><th>Cache write</th><th>Cost</th></tr>'
+        + acct.model_usage.map(r => '<tr><td><b>' + r.model + '</b></td><td>' + (r.provider || '') + '</td>'
+          + '<td>' + (r.total_requests || 0) + '</td>'
+          + '<td>' + fmtTok(r.input_tokens) + '</td><td>' + fmtTok(r.output_tokens) + '</td>'
+          + '<td>' + fmtTok(r.cache_read_tokens) + '</td><td>' + fmtTok(r.cache_write_tokens) + '</td>'
+          + '<td>' + (r.cost_usd ? '$' + r.cost_usd.toFixed(4) : '—') + '</td></tr>').join('')
+        + '</table></details>');
+    }
+    if (usage.length) html += '<h3>Model usage detail</h3>' + usage.join('');
     document.getElementById('content').innerHTML = html;
     const on = (selector, handler) => {
       for (const btn of document.querySelectorAll(selector)) btn.addEventListener('click', () => handler(btn).catch(err => {

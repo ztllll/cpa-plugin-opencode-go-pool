@@ -39,6 +39,14 @@ type accountState struct {
 	DashboardRefreshedAt time.Time
 	DashboardError       string
 
+	// Model usage detail from the console usage API (best-effort; requires a
+	// live console cookie).
+	ModelUsage           []ModelUsageRow
+	ModelUsageSummary    ModelUsageSummary
+	ModelUsageRange      string
+	ModelUsageRefreshedAt time.Time
+	ModelUsageError      string
+
 	// CooldownSuppressedAt makes a manual unblock stick: host cooldown
 	// records not updated after this time are ignored.
 	CooldownSuppressedAt time.Time

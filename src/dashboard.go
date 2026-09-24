@@ -392,8 +392,21 @@ func pollLoop(stop <-chan struct{}, kick <-chan struct{}) {
 
 		if time.Since(lastDashboard) >= interval && len(targets) > 0 {
 			lastDashboard = time.Now()
+			p.mu.Lock()
+			usageRange := p.cfg.UsageDetailRange
+			modelsState := make(map[*account]*accountState, len(targets))
+			for _, acct := range targets {
+				st := p.stateFor(acct)
+				if modelsDue(st, defaultModelsEvery, time.Now()) {
+					modelsState[acct] = st
+				}
+			}
+			p.mu.Unlock()
 			for _, acct := range targets {
 				refreshAccount(p, acct)
+				if _, due := modelsState[acct]; due {
+					refreshAccountModels(p, acct, usageRange)
+				}
 			}
 		}
 

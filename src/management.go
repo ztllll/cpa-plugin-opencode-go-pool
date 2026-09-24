@@ -64,6 +64,11 @@ type accountStatus struct {
 	CookieSet            bool                    `json:"cookie_set"`
 	DashboardRefreshedAt string                  `json:"dashboard_refreshed_at,omitempty"`
 	DashboardError       string                  `json:"dashboard_error,omitempty"`
+	ModelUsage           []ModelUsageRow         `json:"model_usage,omitempty"`
+	ModelUsageSummary    *ModelUsageSummary      `json:"model_usage_summary,omitempty"`
+	ModelUsageRange      string                  `json:"model_usage_range,omitempty"`
+	ModelUsageRefreshedAt string                 `json:"model_usage_refreshed_at,omitempty"`
+	ModelUsageError      string                  `json:"model_usage_error,omitempty"`
 }
 
 type poolStatus struct {
@@ -123,6 +128,16 @@ func buildStatus() poolStatus {
 		}
 		entry.DashboardRefreshedAt = formatTime(st.DashboardRefreshedAt)
 		entry.DashboardError = st.DashboardError
+		if len(st.ModelUsage) > 0 {
+			entry.ModelUsage = st.ModelUsage
+			s := st.ModelUsageSummary
+			entry.ModelUsageSummary = &s
+			entry.ModelUsageRange = st.ModelUsageRange
+			entry.ModelUsageRefreshedAt = formatTime(st.ModelUsageRefreshedAt)
+		}
+		if st.ModelUsageError != "" {
+			entry.ModelUsageError = st.ModelUsageError
+		}
 		for _, name := range windowNames {
 			w := st.Windows[name]
 			ws := windowStatus{UsagePercent: w.UsagePercent, UpdatedAt: formatTime(w.UpdatedAt)}
