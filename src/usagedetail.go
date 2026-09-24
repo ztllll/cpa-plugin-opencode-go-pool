@@ -24,7 +24,7 @@ import (
 // Numeric values arrive as JSON strings; cost is micro-cents (1e8 = 1 USD).
 const (
 	consoleAPIBase      = "https://opencode.ai/console/api"
-	usageDetailDefault  = "7d"
+	usageDetailDefault  = "all"
 	defaultModelsEvery  = 30 * time.Minute
 )
 
