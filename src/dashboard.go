@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
@@ -50,6 +51,94 @@ var humanDurationParts = [...]struct {
 type windowUsage struct {
 	UsagePercent int
 	ResetInSec   int64
+}
+
+// OpenCode Go exposes a stable JSON usage endpoint keyed by the account's own
+// API key; it needs no dashboard cookie and survives upstream page redesigns.
+const usageAPIURL = "https://opencode.ai/zen/go/v1/usage"
+const usageAPIUserAgent = "opencode/1.0"
+
+type usageAPIWindow struct {
+	Status   string  `json:"status"`
+	Percent  float64 `json:"percent"`
+	ResetsAt string  `json:"resetsAt"`
+}
+
+type usageAPIResponse struct {
+	Usage map[string]usageAPIWindow `json:"usage"`
+}
+
+var usageAPIWindowMap = map[string]string{
+	"rolling": windowFiveHour,
+	"weekly":  windowWeekly,
+	"monthly": windowMonthly,
+}
+
+// refreshAccountViaAPI fetches quota via the /v1/usage API (API-key auth) and
+// applies it the same way the dashboard path does. It returns false when the
+// account has no API key or the API call cannot be used, so the caller falls
+// back to the dashboard (cookie) path. The pool lock must NOT be held.
+func refreshAccountViaAPI(p *pool, acct *account) bool {
+	p.mu.Lock()
+	apiKey := acct.apiKey
+	p.mu.Unlock()
+	if apiKey == "" {
+		return false
+	}
+	resp, errDo := hostHTTPDo(pluginapi.HTTPRequest{
+		Method: http.MethodGet,
+		URL:    usageAPIURL,
+		Headers: http.Header{
+			"Authorization": []string{"Bearer " + apiKey},
+			"Accept":        []string{"application/json"},
+			"User-Agent":    []string{usageAPIUserAgent},
+		},
+	})
+	if errDo != nil {
+		hostLog("warn", "usage API fetch failed, falling back to dashboard", map[string]any{"account": acct.Name, "error": errDo.Error()})
+		return false
+	}
+	if resp.StatusCode != http.StatusOK {
+		hostLog("warn", "usage API HTTP error, falling back to dashboard", map[string]any{"account": acct.Name, "status": resp.StatusCode})
+		return false
+	}
+	var payload usageAPIResponse
+	if errUnmarshal := json.Unmarshal(resp.Body, &payload); errUnmarshal != nil {
+		hostLog("warn", "usage API parse failed, falling back to dashboard", map[string]any{"account": acct.Name, "error": errUnmarshal.Error()})
+		return false
+	}
+	now := time.Now()
+	p.mu.Lock()
+	st := p.stateFor(acct)
+	st.DashboardRefreshedAt = now
+	st.DashboardError = ""
+	applied := 0
+	for window, usage := range payload.Usage {
+		name, ok := usageAPIWindowMap[window]
+		if !ok {
+			continue
+		}
+		w := st.Windows[name]
+		w.UsagePercent = atoiFloor(strconv.FormatFloat(usage.Percent, 'f', -1, 64))
+		if resetAt, errParse := time.Parse(time.RFC3339, usage.ResetsAt); errParse == nil {
+			w.ResetAt = resetAt
+		} else {
+			w.ResetAt = now
+		}
+		w.UpdatedAt = now
+		// A fresh reading below threshold clears an earlier hard block: the
+		// window has reset.
+		if w.UsagePercent < p.cfg.ThresholdPercent && w.BlockedUntil.After(now) {
+			w.BlockedUntil = time.Time{}
+		}
+		applied++
+	}
+	p.mu.Unlock()
+	if applied == 0 {
+		hostLog("warn", "usage API returned no known windows, falling back to dashboard", map[string]any{"account": acct.Name})
+		return false
+	}
+	return true
 }
 
 // parseDashboardHTML extracts per-window usage from the workspace Go page,
@@ -149,9 +238,14 @@ func atoi64(raw string) int64 {
 	return int64(v)
 }
 
-// refreshAccount fetches and applies dashboard quota for one account. The
-// pool lock must NOT be held; results are applied under the lock afterwards.
+// refreshAccount fetches and applies quota for one account, preferring the
+// stable /v1/usage API (API key) and falling back to the dashboard page
+// (cookie). The pool lock must NOT be held; results are applied under the
+// lock afterwards.
 func refreshAccount(p *pool, acct *account) {
+	if refreshAccountViaAPI(p, acct) {
+		return
+	}
 	p.mu.Lock()
 	workspaceID, cookie, cookieFile := p.dashboardCredentials(acct)
 	p.mu.Unlock()
@@ -288,7 +382,9 @@ func pollLoop(stop <-chan struct{}, kick <-chan struct{}) {
 		var targets []*account
 		for _, acct := range p.accounts {
 			workspaceID, cookie, cookieFile := p.dashboardCredentials(acct)
-			if workspaceID != "" && (cookie != "" || cookieFile != "") && !acct.Disabled {
+			// API-key accounts refresh via /v1/usage and need no dashboard
+			// credentials; cookie accounts keep the dashboard path.
+			if !acct.Disabled && (acct.apiKey != "" || (workspaceID != "" && (cookie != "" || cookieFile != ""))) {
 				targets = append(targets, acct)
 			}
 		}
