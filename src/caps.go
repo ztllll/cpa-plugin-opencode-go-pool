@@ -23,6 +23,8 @@ type modelCap struct {
 
 var modelCaps = map[string]modelCap{
 	"glm-5.3-flash":                 {60, false, true},
+	"omen-alpha":                     {100, false, true}, // $100/month per official announcement (not in the docs table)
+	"union-alpha":                    {100, false, true},
 	"glm-5.3":                       {15, false, true},
 	"glm-5.2":                       {60, false, true},
 	"glm-5.1":                       {60, false, true},

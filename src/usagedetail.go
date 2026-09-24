@@ -248,13 +248,12 @@ func refreshAccountModels(p *pool, acct *account, rng string) bool {
 	out := make([]ModelUsageRow, 0, len(rows))
 	// Month-to-date spend per model, used to compute remaining official quota.
 	mtd := map[string]flexInt{}
-	if monthStart := time.Now().UTC().Format("2006-01-02T00:00:00Z"); true {
-		if bodyMTD, errMTD := consoleGet(cookie, orgID, "/usage/models?range=all&since="+monthStart+"&pageSize=100"); errMTD == nil {
-			var mtdResp usageDetailAPIResp
-			if json.Unmarshal(bodyMTD, &mtdResp) == nil {
-				for _, r := range mtdResp.rowList() {
-					mtd[r.Model] += r.TotalCostMicroCents
-				}
+	monthStart := time.Now().UTC().Format("2006-01") + "-01T00:00:00Z"
+	if bodyMTD, errMTD := consoleGet(cookie, orgID, "/usage/models?range=all&since="+monthStart+"&pageSize=100"); errMTD == nil {
+		var mtdResp usageDetailAPIResp
+		if json.Unmarshal(bodyMTD, &mtdResp) == nil {
+			for _, r := range mtdResp.rowList() {
+				mtd[r.Model] += r.TotalCostMicroCents
 			}
 		}
 	}
